@@ -17,6 +17,18 @@ A simple Streamlit app template for you to modify!
    $ source .venv/bin/activate
    ```
 
+3. write configs in .venv/config.json
+   (1) create config.json file in .venv folder
+   (2) wirte your configs
+   ```
+   {
+      "OPENAI_API_KEY": "sk-proj-xxxxxxxxxxxx",
+      "NEO4J_URI": "neo4j+s://xxxxxxxx.databases.neo4j.io",
+      "NEO4J_USER": "neo4j",
+      "NEO4J_PASSWORD": "your-password-here"
+   }
+   ```
+
 3. Install the requirements
 
    ```

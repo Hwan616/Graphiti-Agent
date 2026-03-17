@@ -1,2 +1,5 @@
 streamlit
 openai
+graphiti-core
+neo4j
+nest_asyncio
