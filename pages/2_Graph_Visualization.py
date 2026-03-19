@@ -1,12 +1,10 @@
 import streamlit as st
+from pyvis.network import Network
+import streamlit.components.v1 as components
 from neo4j import GraphDatabase
-from streamlit_agraph import agraph, Node, Edge, Config
-import json
-import os
 
-st.set_page_config(page_title="Graph Visualization")
-st.title("Graph Visualizer")
-st.caption("Neo4j 데이터베이스에 저장된 실시간 그래프를 시각화합니다.")
+st.set_page_config(page_title="Graph Visualization", layout="wide")
+st.title("Graph Visualization")
 
 # --- 1. 세션 검증 ---
 if not st.session_state.get("config_loaded"):
@@ -15,99 +13,89 @@ if not st.session_state.get("config_loaded"):
         st.switch_page("home.py")
     st.stop()
 
-# --- 2. 기반 정보 설정 ---
+# --- 2. Neo4j 드라이버 초기화 ---
 config = st.session_state.neo4j_config
-DB_NAME = config['user']
+driver = GraphDatabase.driver(
+            config["uri"],
+            auth=(config["user"], config["password"])
+        )
 
-# --- 3. 데이터 로드 및 초기화 함수 ---
-def get_graph_data():
-    """Neo4j에서 노드와 관계 데이터를 가져와 agraph 형식으로 변환합니다."""
-    nodes = []
-    edges = []
-    
-    driver = GraphDatabase.driver(config['uri'], auth=(config['user'], config['password']))
-    try:
-        with driver.session(database=DB_NAME) as session:
-            # 모든 노드와 관계를 가져오는 쿼리
-            query = "MATCH (n)-[r]->(m) RETURN n, r, m LIMIT 100"
-            results = session.run(query)
-            
-            node_ids = set()
-            for record in results:
-                n, r, m = record['n'], record['r'], record['m']
-                
-                # 노드 처리 (n)
-                if n.element_id not in node_ids:
-                    label = list(n.labels)[0] if n.labels else "Unknown"
-                    color = "#F87171" if label == "Entity" else "#60A5FA" # Entity: 빨강, Episodic: 파랑
-                    nodes.append(Node(id=n.element_id, label=n.get('name', 'No Name'), color=color, size=20))
-                    node_ids.add(n.element_id)
-                
-                # 노드 처리 (m)
-                if m.element_id not in node_ids:
-                    label = list(m.labels)[0] if m.labels else "Unknown"
-                    color = "#F87171" if label == "Entity" else "#60A5FA"
-                    nodes.append(Node(id=m.element_id, label=m.get('name', 'No Name'), color=color, size=20))
-                    node_ids.add(m.element_id)
-                
-                # 관계 처리
-                edges.append(Edge(source=n.element_id, target=m.element_id, label=r.type))
-    finally:
-        driver.close()
-    return nodes, edges
-
-def reset_database():
-    """데이터베이스의 모든 내용을 삭제합니다. (매우 주의!)"""
-    driver = GraphDatabase.driver(config['uri'], auth=(config['user'], config['password']))
-    try:
-        with driver.session(database=DB_NAME) as session:
-            session.run("MATCH (n) DETACH DELETE n")
-        return True
-    except Exception as e:
-        st.error(f"초기화 중 오류 발생: {e}")
-        return False
-    finally:
-        driver.close()
-
-# --- 4. 사이드바 컨트롤 ---
+# --- 3. 그래프 시각화 ---
 with st.sidebar:
-    st.header("Graph Control")
-    
-    if st.button("Graph Reload", use_container_width=True):
-        st.rerun()
-    
-    st.divider()
-    
-    if st.button("Graph Delete", use_container_width=True):
-        if st.checkbox("정말로 삭제하시겠습니까? (복구 불가)"):
-            if reset_database():
-                st.success("데이터베이스가 초기화되었습니다.")
-                st.rerun()
-    
-    st.divider()
+    st.header("Graph Visualization Settings")
 
-# --- 5. 그래프 렌더링 ---
-nodes, edges = get_graph_data()
-
-if not nodes:
-    st.info("아직 저장된 지식이 없습니다. 1페이지에서 대화를 먼저 진행해 주세요!")
-else:
-    # 그래프 설정
-    config_visual = Config(
-        width=1200,
-        height=800,
-        directed=True,
-        physics=True,
-        hierarchical=False,
-        nodeHighlightBehavior=True,
-        highlightColor="#F59E0B",
-        collapsible=False
+    # Relationship Limit
+    limit = st.number_input(
+        label="Relationships Limit", 
+        min_value=1,      # 최소값
+        max_value=1000,   # 최대값
+        value=30,         # 기본값
+        step=1            # 증감 단위
     )
-    
-    st.write(f"현재 총 {len(nodes)}개의 지식 노드가 연결되어 있습니다.")
-    
-    # 그래프 출력
-    agraph(nodes=nodes, edges=edges, config=config_visual)
+    st.caption("Relationship은 최근에 생성된 순으로 표시됩니다.")
 
-    # 노드 상세 정보 표시
-    st.info("info: 마우스로 노드를 드래그하거나 확대/축소할 수 있습니다.")
+    create_button = st.button("Create")
+
+    st.divider()
+    delete_button = st.button("Delete")
+    confirm_delete = st.checkbox("그래프 삭제에 동의합니다.")
+
+if create_button:
+    try:
+        query = f"MATCH (a)-[r]->(b) RETURN a, type(r) AS r, b ORDER BY a.createdAt DESC LIMIT {limit}"
+        
+        with driver.session() as session:
+            result = session.run(query)
+            records = list(result)
+
+        if not records:
+            st.info("데이터가 없습니다. Agent와 대화를 나누어 그래프를 생성하세요.")
+        else:
+            net = Network(height="600px", width="100%", directed=True, bgcolor="#ffffff", font_color="black")
+            
+            # Physics 설정 (그래프가 너무 흔들리지 않게)
+            net.force_atlas_2based(gravity=-50, central_gravity=0.01, spring_length=100)
+
+            for record in records:
+                node_a = record["a"]
+                node_b = record["b"]
+                rel_type = record["r"]
+
+                # Node Label 추출 (name 속성 우선, 없으면 ID)
+                def get_label(node):
+                    return node.get("name", node.get("id", str(node.id)))
+
+                a_id = str(node_a.id)
+                b_id = str(node_b.id)
+                a_label = get_label(node_a)
+                b_label = get_label(node_b)
+
+                net.add_node(a_id, label=a_label, title=str(dict(node_a)), color="#97C2FC")
+                net.add_node(b_id, label=b_label, title=str(dict(node_b)), color="#FFFF00")
+                net.add_edge(a_id, b_id, label=rel_type)
+
+            # HTML 저장 및 표시
+            net.save_graph("graph.html")
+            with open("graph.html", "r", encoding="utf-8") as f:
+                source = f.read()
+            components.html(source, height=620)
+            
+    except Exception as e:
+        st.error(f"시각화 오류: {e}")
+
+if delete_button:
+    if confirm_delete:
+        try:
+            # 1. Neo4j 데이터 삭제
+            delete_query = "MATCH (n) DETACH DELETE n"
+            with driver.session() as session:
+                session.run(delete_query)
+            # 2. Streamlit 세션 대화 기록 삭제
+            st.session_state.messages = []
+
+            st.sidebar.success("초기화 완료")
+            st.rerun() # 화면 갱신
+        except Exception as e:
+            st.error(f"초기화 중 에러 발생: {e}")
+    else:
+        st.sidebar.warning("먼저 삭제 동의 체크박스를 선택해주세요.")

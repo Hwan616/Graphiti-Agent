@@ -3,4 +3,4 @@ openai
 graphiti-core
 neo4j
 nest_asyncio
-streamlit-agraph
+pyvis
