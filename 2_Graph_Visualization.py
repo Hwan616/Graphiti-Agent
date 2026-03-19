@@ -10,7 +10,7 @@ st.title("Graph Visualization")
 if not st.session_state.get("config_loaded"):
     st.error("초기 설정이 로드되지 않았습니다.")
     if st.button("Home으로 이동"):
-        st.switch_page("home.py")
+        st.switch_page("streamlit_app.py")
     st.stop()
 
 # --- 2. Neo4j 드라이버 초기화 ---

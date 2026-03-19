@@ -1,5 +1,6 @@
 # my test file
 test_neo4j.py
+graph.html
 
 .streamlit/secrets.toml
 

@@ -18,7 +18,7 @@ st.caption("OpenAI 기반 장기 기억 지식 그래프 에이전트")
 if not st.session_state.get("config_loaded"):
     st.error("초기 설정이 로드되지 않았습니다.")
     if st.button("Home으로 이동"):
-        st.switch_page("home.py")
+        st.switch_page("streamlit_app.py")
     st.stop()
 
 # --- 3. 기반 유틸리티 함수 ---
